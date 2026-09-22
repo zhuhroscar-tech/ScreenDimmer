@@ -48,6 +48,8 @@ final class Dimmer: ObservableObject {
     @Published var displays: [Display] = []
     @Published var selection: [String: Bool] = [:]
     @Published var shortcutAvailable = false
+    @Published var dimmingMethods: [String: String] = [:]
+    private let gamma = GammaDimming()
     private let defaults: UserDefaults
     private var shades: [String: ShadeWindow] = [:]
     private var observers: [NSObjectProtocol] = []
@@ -99,6 +101,7 @@ final class Dimmer: ObservableObject {
             return Display(id: id, displayID: displayID, screen: screen, builtIn: CGDisplayIsBuiltin(displayID) != 0)
         }
         let current = Set(displays.map(\.id))
+        gamma.removeDisconnected(keeping: Set(displays.map(\.displayID)))
         for id in Array(shades.keys) where !current.contains(id) {
             shades.removeValue(forKey: id)?.close()
         }
@@ -110,23 +113,38 @@ final class Dimmer: ObservableObject {
     }
 
     func apply() {
-        // One main-thread transaction, one shared value, no hardware/gamma crossover.
+        // Gamma affects the display output, including the Spaces animation.
+        // Unsupported displays retain the original overlay-only fallback.
         NSAnimationContext.beginGrouping()
         NSAnimationContext.current.duration = 0
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        var methods: [String: String] = [:]
         for display in displays {
             guard let shade = shades[display.id] else { continue }
             let opacity = DimmingPolicy.opacity(brightness: brightness, selected: isSelected(display), paused: paused)
-            shade.alphaValue = opacity
-            if opacity > 0 { shade.orderFrontRegardless() } else { shade.orderOut(nil) }
+            let factor = 1 - opacity
+            if gamma.setFactor(factor, for: display.displayID) {
+                shade.orderOut(nil)
+                shade.alphaValue = 0
+                methods[display.id] = opacity > 0 ? "Display dimming · stays on across desktops" : "No dimming"
+            } else if gamma.restore(display.displayID) {
+                shade.alphaValue = opacity
+                if opacity > 0 { shade.orderFrontRegardless() } else { shade.orderOut(nil) }
+                methods[display.id] = "Overlay fallback · may flash between desktops"
+            } else {
+                shade.orderOut(nil)
+                methods[display.id] = "Display restore failed · try Restore 100% again"
+            }
         }
         CATransaction.commit()
         NSAnimationContext.endGrouping()
+        dimmingMethods = methods
         onChange?()
     }
 
     func removeShades() {
+        gamma.restoreAll()
         for shade in shades.values { shade.close() }
         shades.removeAll()
     }
@@ -136,6 +154,7 @@ final class Dimmer: ObservableObject {
             let shade = shades[display.id]!
             return ["name": display.name, "builtIn": display.builtIn, "selected": isSelected(display),
                     "displayID": display.displayID, "frame": NSStringFromRect(display.screen.frame),
+                    "method": dimmingMethods[display.id] ?? "Unknown", "gammaVerified": gamma.matchesApplied(display.displayID),
                     "overlayFrame": NSStringFromRect(shade.frame), "opacity": Double(shade.alphaValue),
                     "visible": shade.isVisible, "clickThrough": shade.ignoresMouseEvents]
         }
@@ -208,7 +227,7 @@ struct Controls: View {
                                 Image(systemName: display.builtIn ? "laptopcomputer" : "display").font(.system(size: 21)).frame(width: 30).foregroundStyle(.secondary)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(display.name).font(.system(size: 13, weight: .medium))
-                                    Text(display.details).font(.system(size: 10)).foregroundStyle(.secondary)
+                                    Text(dimmingMethodsText(display)).font(.system(size: 10)).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Toggle("Link \(display.name)", isOn: Binding(get: { model.isSelected(display) }, set: { model.select(display, $0) }))
@@ -244,6 +263,10 @@ struct Controls: View {
             .overlay(Color.black.opacity(model.paused ? 0 : 1 - model.brightness / 100))
             .clipShape(RoundedRectangle(cornerRadius: 4)).frame(width: 77, height: 39)
     }
+
+    private func dimmingMethodsText(_ display: Display) -> String {
+        model.dimmingMethods[display.id] ?? display.details
+    }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -254,6 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var pauseItem: NSMenuItem!
     var hotKey: EventHotKeyRef?
     var eventHandler: EventHandlerRef?
+    var terminationSignal: DispatchSourceSignal?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let args = CommandLine.arguments
@@ -267,6 +291,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         model = Dimmer()
+        // Route normal process termination through the same per-display restore
+        // used by Quit, instead of abandoning a modified transfer table.
+        signal(SIGTERM, SIG_IGN)
+        terminationSignal = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        terminationSignal?.setEventHandler { NSApp.terminate(nil) }
+        terminationSignal?.resume()
         createMenu()
         registerRestoreShortcut()
         let content = NSHostingView(rootView: Controls(model: model))
@@ -346,6 +376,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let suite = "local.oscar.ScreenDimmer.test.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         let probe = Dimmer(defaults: defaults)
+        let originalTables = Dictionary(uniqueKeysWithValues: probe.displays.compactMap { display in
+            GammaTable.read(display.displayID).map { (display.displayID, $0) }
+        })
+        func checkRestored() {
+            for (id, expected) in originalTables {
+                precondition(GammaTable.read(id)?.matches(expected) == true, "Original gamma not restored")
+            }
+        }
         var steps: [[String: Any]] = []
         if integration {
             precondition(!probe.displays.isEmpty, "Integration tests require access to a graphical macOS session")
@@ -354,19 +392,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 for display in probe.displays {
                     let expected = DimmingPolicy.opacity(brightness: value, selected: probe.isSelected(display), paused: false)
                     let row = probe.snapshot().first { $0["displayID"] as? UInt32 == display.displayID }!
-                    precondition(abs((row["opacity"] as! Double) - expected) < 0.0001)
+                    let usesGamma = row["gammaVerified"] as! Bool
+                    precondition(abs((row["opacity"] as! Double) - (usesGamma ? 0 : expected)) < 0.0001)
                     precondition(row["frame"] as! String == row["overlayFrame"] as! String)
                     precondition(row["clickThrough"] as! Bool)
-                    precondition(row["visible"] as! Bool == (expected > 0))
+                    precondition(row["visible"] as! Bool == (!usesGamma && expected > 0))
                 }
                 steps.append(["brightness": value, "displays": probe.snapshot()])
             }
             probe.paused = true
+            checkRestored()
             precondition(probe.snapshot().allSatisfy { ($0["visible"] as! Bool) == false })
             probe.paused = false
             // Refresh exercises the same path used on rotation, hotplug, wake and Space changes.
             probe.refresh()
             probe.restore()
+            checkRestored()
             precondition(probe.snapshot().allSatisfy { ($0["visible"] as! Bool) == false })
         }
         let result: [String: Any] = ["displays": probe.snapshot(), "steps": steps, "integrationPassed": integration]
