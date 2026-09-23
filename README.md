@@ -1,5 +1,7 @@
 # ScreenDimmer
 
+![ScreenDimmer](assets/cover.png)
+
 A native macOS menu bar app that dims all selected displays with one continuous slider. Built for a foldable Sculptor whose two physical panels appear as a single macOS display.
 
 ## Use
@@ -10,6 +12,15 @@ A native macOS menu bar app that dims all selected displays with one continuous 
 4. Use the sun icon in the menu bar to reopen the controls. Closing the window keeps the app running; Quit removes its dimming.
 
 The built-in MacBook screen is excluded by default. External screens are selected by default, including newly connected ones. Display choices and brightness are remembered. Pause temporarily removes the dimming. Restore 100% removes it permanently until the slider is changed again. Control–Option–Command–0 restores 100% globally when the shortcut is available.
+
+## Safari zoom sync
+
+The foldable's logical point-size makes ordinary web pages render small. ScreenDimmer can automatically switch Safari's *default page zoom* between 175% (foldable connected) and 100% (foldable disconnected), so pages look right without you touching Safari's own settings each time you plug or unplug.
+
+- Toggle it on/off from the "Safari default zoom" panel in ScreenDimmer's window.
+- It writes Safari's `DefaultPageZoom` preference directly and only fires on a connect/disconnect transition, matching the same built-in-vs-external display detection already used for dimming.
+- The change affects **new** Safari windows/tabs going forward. Already-open windows keep their current zoom until you relaunch Safari — this is intentional so an in-progress session (unsaved form text, active downloads) is never force-closed.
+- Because Safari is a sandboxed app, writing its preference requires **Full Disk Access** for ScreenDimmer (System Settings → Privacy & Security → Full Disk Access). Without it, the panel shows a clear inline error instead of silently doing nothing; dimming and every other feature work normally either way.
 
 ## Why this approach
 

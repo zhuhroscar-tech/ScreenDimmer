@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ScreenDimmer Cover</title>
+<style>
+  @font-face {
+    font-family: "SFRounded";
+    src: local("SF Pro Rounded"), local("-apple-system");
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1280px; height: 640px;
+    background: #0f1519;
+    font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden;
+  }
+  .stage {
+    position: relative;
+    width: 1280px; height: 640px;
+    background:
+      radial-gradient(1100px 620px at 78% -10%, rgba(99,227,196,0.10), transparent 60%),
+      linear-gradient(180deg, #10171b 0%, #0b1013 100%);
+  }
+  /* faint panel seam motif referencing the foldable dual-panel concept */
+  .seam {
+    position: absolute; top: 0; bottom: 0; left: 50%;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, rgba(255,255,255,0.06) 20%, rgba(255,255,255,0.06) 80%, transparent);
+  }
+
+  .content {
+    position: absolute; left: 96px; top: 0; bottom: 0;
+    display: flex; flex-direction: column; justify-content: center;
+    padding-bottom: 40px;
+    width: 620px;
+  }
+
+  .mark {
+    width: 56px; height: 56px;
+    border-radius: 16px;
+    background: rgba(99,227,196,0.10);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 28px;
+  }
+  .mark svg { width: 28px; height: 28px; }
+
+  h1 {
+    font-size: 54px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: #f2f5f4;
+    line-height: 1.05;
+  }
+  h1 span { color: #63e3c4; }
+
+  .tagline {
+    margin-top: 18px;
+    font-size: 19px;
+    line-height: 1.55;
+    color: rgba(242,245,244,0.62);
+    font-weight: 400;
+    max-width: 520px;
+  }
+
+  .chips {
+    margin-top: 34px;
+    display: flex; gap: 10px;
+  }
+  .chip {
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: rgba(242,245,244,0.78);
+    background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.07);
+    padding: 7px 13px;
+    border-radius: 8px;
+  }
+  .chip.accent {
+    color: #0f1519;
+    background: #63e3c4;
+    border-color: #63e3c4;
+  }
+
+  /* right side: recreation of the app's own control panel, as real UI not illustration */
+  .panel {
+    position: absolute; right: 88px; top: 50%; transform: translateY(-50%);
+    width: 420px;
+    background: #131b20;
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
+    padding: 28px 28px 24px;
+    box-shadow: 0 40px 90px rgba(0,0,0,0.45), 0 4px 18px rgba(0,0,0,0.3);
+  }
+  .panel-head { display:flex; align-items:center; gap:12px; margin-bottom: 20px; }
+  .panel-icon {
+    width: 40px; height: 40px; border-radius: 12px;
+    background: rgba(99,227,196,0.12);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .panel-icon svg { width: 20px; height: 20px; }
+  .panel-title { font-size: 17px; font-weight: 600; color: #f2f5f4; }
+  .panel-sub { font-size: 11px; color: rgba(242,245,244,0.5); margin-top: 2px; }
+  .panel-linked {
+    margin-left: auto;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+    color: #63e3c4; background: rgba(255,255,255,0.05);
+    padding: 5px 9px; border-radius: 20px;
+  }
+
+  .readout { display:flex; align-items:center; gap:18px; background: rgba(0,0,0,0.25); border-radius: 14px; padding: 16px 18px; margin-bottom: 14px; }
+  .swatches { display:flex; flex-direction:column; gap:4px; padding:6px; background: rgba(0,0,0,0.3); border-radius: 9px; }
+  .swatch { width: 62px; height: 30px; border-radius: 4px; background: linear-gradient(135deg, #63e3c4, #21748c); position: relative; overflow: hidden; }
+  .swatch::after { content:""; position:absolute; inset:0; background: rgba(0,0,0,0.36); }
+  .readout-num { font-size: 40px; font-weight: 300; color: #f2f5f4; }
+  .readout-num sup { font-size: 17px; color: rgba(242,245,244,0.5); font-weight: 400; }
+  .readout-label { font-size: 11px; color: rgba(242,245,244,0.5); margin-top: 2px; }
+
+  .slider-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08); margin: 4px 0 14px; position: relative; }
+  .slider-fill { position: absolute; left:0; top:0; bottom:0; width: 68%; border-radius: 2px; background: #63e3c4; }
+  .slider-thumb { position: absolute; left: 68%; top: 50%; transform: translate(-50%,-50%); width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.4); }
+
+  .row {
+    display:flex; align-items:center; gap:10px;
+    background: rgba(255,255,255,0.035);
+    border-radius: 10px; padding: 11px 13px;
+    margin-top: 8px;
+  }
+  .row .rowicon { width: 18px; text-align:center; color: rgba(242,245,244,0.55); font-size: 15px; }
+  .row .rowtext { flex:1; }
+  .row .rowtitle { font-size: 12.5px; font-weight: 500; color: #f2f5f4; }
+  .row .rowsub { font-size: 9.5px; color: rgba(242,245,244,0.45); margin-top:1px; }
+  .toggle { width: 30px; height: 17px; border-radius: 10px; position: relative; }
+  .toggle.on { background: #63e3c4; }
+  .toggle.on::after { content:""; position:absolute; right:2px; top:2px; width:13px; height:13px; border-radius:50%; background:#0f1519; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="seam"></div>
+
+  <div class="content">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 4V2M12 22v-2M4 12H2m20 0h-2M5.6 5.6 4.2 4.2M19.8 19.8l-1.4-1.4M18.4 5.6l1.4-1.4M4.2 19.8l1.4-1.4" stroke="#63e3c4" stroke-width="1.6" stroke-linecap="round"/><circle cx="12" cy="12" r="4.6" stroke="#63e3c4" stroke-width="1.6"/></svg>
+    </div>
+    <h1>Screen<span>Dimmer</span></h1>
+    <div class="tagline">
+      One slider dims a foldable's two panels together — and now keeps Safari
+      readable, switching its default zoom to 175% the moment the panel
+      connects, back to 100% the moment it doesn't.
+    </div>
+    <div class="chips">
+      <div class="chip accent">macOS 14+</div>
+      <div class="chip">Menu bar app</div>
+      <div class="chip">Swift · AppKit</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="5" fill="#63e3c4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2" stroke="#63e3c4" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+      <div>
+        <div class="panel-title">ScreenDimmer</div>
+        <div class="panel-sub">Two panels. One brightness.</div>
+      </div>
+      <div class="panel-linked">LINKED</div>
+    </div>
+
+    <div class="readout">
+      <div class="swatches"><div class="swatch"></div><div class="swatch"></div></div>
+      <div>
+        <div class="readout-num">68<sup>%</sup></div>
+        <div class="readout-label">Shared brightness</div>
+      </div>
+    </div>
+    <div class="slider-track"><div class="slider-fill"></div><div class="slider-thumb"></div></div>
+
+    <div class="row">
+      <div class="rowicon">◐</div>
+      <div class="rowtext">
+        <div class="rowtitle">Sculptor</div>
+        <div class="rowsub">Display dimming · stays on across desktops</div>
+      </div>
+      <div class="toggle on"></div>
+    </div>
+    <div class="row">
+      <div class="rowicon">◎</div>
+      <div class="rowtext">
+        <div class="rowtitle">Safari default zoom</div>
+        <div class="rowsub">Applied 175% · foldable connected</div>
+      </div>
+      <div class="toggle on"></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

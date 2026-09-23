@@ -49,6 +49,7 @@ final class Dimmer: ObservableObject {
     @Published var selection: [String: Bool] = [:]
     @Published var shortcutAvailable = false
     @Published var dimmingMethods: [String: String] = [:]
+    let zoomSync = SafariZoomSync()
     private let gamma = GammaDimming()
     private let defaults: UserDefaults
     private var shades: [String: ShadeWindow] = [:]
@@ -109,6 +110,7 @@ final class Dimmer: ObservableObject {
             if shades[display.id] == nil { shades[display.id] = ShadeWindow(screen: display.screen) }
             shades[display.id]?.setFrame(display.screen.frame, display: true)
         }
+        zoomSync.sync(externalConnected: displays.contains { !$0.builtIn })
         apply()
     }
 
@@ -163,7 +165,13 @@ final class Dimmer: ObservableObject {
 
 struct Controls: View {
     @ObservedObject var model: Dimmer
+    @ObservedObject var zoom: SafariZoomSync
     private let accent = Color(red: 0.39, green: 0.89, blue: 0.77)
+
+    init(model: Dimmer) {
+        self.model = model
+        self.zoom = model.zoomSync
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -244,6 +252,8 @@ struct Controls: View {
             Text("Dims the entire selected screen evenly. If another brightness app is active, set it to 100% and quit it first.")
                 .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
 
+            SafariZoomSection(zoom: zoom, accent: accent, statusText: zoomStatusText)
+
             HStack {
                 Button(model.paused ? "Resume" : "Pause") { model.paused.toggle() }.buttonStyle(.bordered)
                 Spacer()
@@ -266,6 +276,35 @@ struct Controls: View {
 
     private func dimmingMethodsText(_ display: Display) -> String {
         model.dimmingMethods[display.id] ?? display.details
+    }
+
+    private var zoomStatusText: String {
+        if let error = zoom.lastError { return error }
+        if !zoom.enabled { return "Off — Safari's default zoom is left alone." }
+        if let applied = zoom.lastAppliedZoom {
+            return "Applied \(Int(applied * 100))% · new Safari windows use this until the connection state changes."
+        }
+        return "Waiting for a display change to apply."
+    }
+}
+
+struct SafariZoomSection: View {
+    @ObservedObject var zoom: SafariZoomSync
+    let accent: Color
+    let statusText: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "safari.fill").font(.system(size: 15)).foregroundStyle(accent)
+                Text("Safari default zoom").font(.system(size: 12, weight: .medium))
+                Spacer()
+                Toggle("Sync Safari zoom with foldable connection", isOn: $zoom.enabled)
+                    .labelsHidden().toggleStyle(.switch).tint(accent).controlSize(.small)
+            }
+            Text(statusText).font(.system(size: 10)).foregroundStyle(zoom.lastError == nil ? Color.secondary : Color.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }.padding(12).background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -300,7 +339,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         createMenu()
         registerRestoreShortcut()
         let content = NSHostingView(rootView: Controls(model: model))
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 610), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 680), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "ScreenDimmer"
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(calibratedRed: 0.065, green: 0.085, blue: 0.105, alpha: 1)
