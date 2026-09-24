@@ -4,6 +4,25 @@ func check(_ condition: Bool, _ message: String) {
     guard condition else { fatalError(message) }
 }
 
+func readText(_ path: String) -> String {
+    guard let data = FileManager.default.contents(atPath: path), let text = String(data: data, encoding: .utf8) else {
+        fatalError("Missing or unreadable file: \(path)")
+    }
+    return text
+}
+
+for requiredPath in ["README.md", "CHANGELOG.md", "LICENSE", ".github/workflows/ci.yml"] {
+    check(FileManager.default.fileExists(atPath: requiredPath), "Missing required repository file: \(requiredPath)")
+}
+let readme = readText("README.md")
+let changelog = readText("CHANGELOG.md")
+let info = readText("Info.plist")
+check(readme.contains("[CHANGELOG.md](CHANGELOG.md)"), "README must link release history")
+check(readme.contains("[LICENSE](LICENSE)"), "README must link license terms")
+check(changelog.contains("## v1.2.0"), "Changelog must document current app version")
+check(info.contains("<key>CFBundleShortVersionString</key><string>1.2.0</string>"), "Info.plist version must match current changelog entry")
+print("PASS: repository metadata, release-history links, license link, CI workflow, version parity")
+
 for value in stride(from: 15.0, through: 100, by: 1) {
     let alpha = DimmingPolicy.opacity(brightness: value, selected: true, paused: false)
     check(abs(alpha - (1 - value / 100)) < 0.000001, "Discontinuous brightness at \(value)")
