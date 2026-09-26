@@ -2,6 +2,11 @@
 
 All notable changes to ScreenDimmer are documented here.
 
+## v1.2.1 — 2026-09-26
+
+- Made CI validation explicit for `main` pushes and `v*` release tags.
+- Added repository-contract coverage so future releases keep tag-triggered CI wiring.
+
 ## v1.2.0 — 2026-09-24
 
 - Added this release history and repository-contract checks for required project metadata.
